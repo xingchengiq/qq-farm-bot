@@ -10,7 +10,7 @@ import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
 import { useShopStore } from '@/stores/shop'
 import { useStatusStore } from '@/stores/status'
-import { useUserStore } from '@/stores/user'
+import { formatTimeDuration, useUserStore } from '@/stores/user'
 
 const accountStore = useAccountStore()
 const statusStore = useStatusStore()
@@ -31,6 +31,14 @@ const serverUptimeBase = ref(0)
 const lastPingTime = ref(Date.now())
 const now = useNow()
 const formattedTime = useDateFormat(now, 'YYYY-MM-DD HH:mm:ss')
+
+const isCardUser = computed(() => !!userStore.userCard)
+const cardRemainingText = computed(() => (userStore.userCard ? formatTimeDuration(userStore.userCard) : ''))
+
+async function handleLogout() {
+  await userStore.logout()
+  router.push('/login')
+}
 
 async function checkConnection() {
   try {
@@ -236,6 +244,42 @@ const showThemeDropdown = ref(false)
         />
       </router-link>
     </nav>
+
+    <!-- 当前登录用户 -->
+    <div class="mx-2 mb-2 flex-none rounded-xl px-3 py-2.5" style="background: color-mix(in srgb, var(--surface-2) 80%, transparent);">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium" style="color: var(--theme-text);">
+            {{ userStore.username || '未登录' }}
+          </div>
+          <div class="mt-0.5 flex items-center gap-1.5 text-[11px]" style="color: var(--theme-text); opacity: 0.7;">
+            <span v-if="userStore.isAdmin">管理员</span>
+            <template v-if="isCardUser">
+              <span :class="userStore.isExpired ? 'text-red-500' : ''" :style="userStore.isExpired ? {} : { color: 'var(--theme-primary)' }">
+                {{ userStore.isExpired ? '已到期' : `剩 ${cardRemainingText}` }}
+              </span>
+            </template>
+          </div>
+        </div>
+        <div class="flex flex-none items-center gap-1">
+          <button
+            v-if="isCardUser"
+            class="h-7 w-7 flex items-center justify-center rounded-lg transition-colors hover:bg-gray-200/60 dark:hover:bg-gray-700/60"
+            title="续费"
+            @click="router.push('/renewal')"
+          >
+            <div class="i-carbon-renew text-sm" :style="{ color: 'var(--theme-primary)' }" />
+          </button>
+          <button
+            class="h-7 w-7 flex items-center justify-center rounded-lg transition-colors hover:bg-gray-200/60 dark:hover:bg-gray-700/60"
+            title="退出登录"
+            @click="handleLogout"
+          >
+            <div class="i-carbon-logout text-sm" style="color: var(--theme-danger, #e5484d);" />
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Footer Status -->
     <div class="relative mt-4 flex-none rounded-xl px-3 py-2.5" style="background: color-mix(in srgb, var(--surface-2) 80%, transparent);">

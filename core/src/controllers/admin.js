@@ -56,12 +56,15 @@ const {
 const { registerAdminProxyRoutes } = require("./admin-proxy-routes");
 const { registerAdminPublicInfoRoutes } = require("./admin-public-info-routes");
 const { registerAdminQrLoginRoutes } = require("./admin-qr-login-routes");
-const { registerAdminNapcatLoginRoutes } = require("./admin-napcat-login-routes");
 const { createAdminRouteHelpers } = require("./admin-route-helpers");
 const { registerAdminSettingsRoutes } = require("./admin-settings-routes");
 const { registerAdminShopRoutes } = require("./admin-shop-routes");
 const { createAdminSessionManager } = require("./admin-session-manager");
 const { registerAdminSystemRoutes } = require("./admin-system-routes");
+const { registerAdminCardRoutes } = require("./admin-card-routes");
+const { registerAdminUserRoutes } = require("./admin-user-routes");
+const { registerAdminLoginLogRoutes } = require("./admin-login-log-routes");
+const { registerAdminSuperAdminRoutes } = require("./admin-super-admin-routes");
 const userStore = require("../models/user-store");
 
 const adminLogger = createModuleLogger("admin");
@@ -72,12 +75,19 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 const PUBLIC_API_PATHS = new Set([
   "/login",
-  "/auto-login",
   "/qr/create",
   "/qr/check",
+  "/card-claim/status",
+  "/card-claim/claim",
   "/game-version",
   "/public/login-links",
+  "/user-count",
+  "/super-admin-announcement",
+  "/super-admin-announcement/verify",
   "/changelog",
+  "/public/renew",
+  "/public/reset-password/verify",
+  "/public/reset-password/confirm",
   "/health",
 ]);
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -380,6 +390,9 @@ function startAdminServer(dataProvider) {
     getProvider: () => provider,
   });
   const {
+    checkAccountLimit,
+    checkAccountLimitInterval,
+    getAdminUserMutationError,
     requireAdminRole,
     requireDangerConfirmation,
     requireSuperAdminRole,
@@ -409,6 +422,9 @@ function startAdminServer(dataProvider) {
   );
   app.use("/login-assets", (req, res) => res.sendStatus(404));
   adminScheduler.setIntervalTask("session_cleanup", FIVE_MINUTES_MS, cleanupInvalidAdminSessions, {
+    preventOverlap: true,
+  });
+  adminScheduler.setIntervalTask("account_limit_check", ONE_MINUTE_MS, checkAccountLimitInterval, {
     preventOverlap: true,
   });
 
@@ -541,6 +557,44 @@ function startAdminServer(dataProvider) {
     getRuntimeConfig,
     updateRuntimeConfig,
   });
+  registerAdminSuperAdminRoutes({
+    app,
+    store,
+    userStore,
+    logger: adminLogger,
+    requireAdminToken,
+    requireSuperAdminRole,
+    requireDangerConfirmation,
+    checkAccountLimit,
+  });
+  registerAdminCardRoutes({
+    app,
+    requireAdminToken,
+    requireAdminRole,
+    requireDangerConfirmation,
+    userStore,
+    adminLogger,
+  });
+  registerAdminUserRoutes({
+    app,
+    requireAdminToken,
+    requireAdminRole,
+    requireSuperAdminRole,
+    requireDangerConfirmation,
+    getAdminUserMutationError,
+    userStore,
+    adminLogger,
+    invalidateAdminSessions,
+    updateAdminSessions,
+  });
+  registerAdminLoginLogRoutes({
+    app,
+    userStore,
+    logger: adminLogger,
+    requireAdminToken,
+    requireAdminRole,
+    requireDangerConfirmation,
+  });
   adminLogger.info("抓包服务默认关闭，未随管理面板启动运行");
   registerAdminCaptureRoutes({
     app,
@@ -580,7 +634,6 @@ function startAdminServer(dataProvider) {
     updateRuntimeConfig,
   });
   registerAdminQrLoginRoutes({ app });
-  registerAdminNapcatLoginRoutes({ app });
   registerAdminProxyRoutes({ app, logger: adminLogger });
   registerSpaFallback(app, webDist);
 
