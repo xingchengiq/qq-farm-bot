@@ -273,6 +273,17 @@ const DEFAULT_AUTOMATION = {
     charity_flower_donate: false,
     charity_flower_reward_claim: false,
     charity_flower_public_fund_claim: false,
+    // 萌宠成长日记。以下只包含不涉及用户选择商品或付费刷新的自动化项。
+    pet_diary_adopt: false,
+    pet_diary_feed: false,
+    pet_diary_draw: false,
+    pet_diary_story_claim: false,
+    pet_diary_seed_claim: false,
+    pet_diary_solar_claim: false,
+    pet_diary_treasure_open: false,
+    pet_diary_compensation_claim: false,
+    pet_diary_charm_equip: false,
+    pet_diary_battle: false,
     fertilizer_gift: false,
     fertilizer_buy_organic: false,
     fertilizer_buy_normal: false,
@@ -315,7 +326,20 @@ const RAIN_POEM_AUTOMATION_KEYS = [
     'rain_poem_prank_use',
     'rain_poem_research_unlock'
 ];
+const PET_DIARY_AUTOMATION_KEYS = [
+    'pet_diary_adopt',
+    'pet_diary_feed',
+    'pet_diary_draw',
+    'pet_diary_story_claim',
+    'pet_diary_seed_claim',
+    'pet_diary_solar_claim',
+    'pet_diary_treasure_open',
+    'pet_diary_compensation_claim',
+    'pet_diary_battle',
+    'pet_diary_charm_equip'
+];
 
+// 此处时间窗需与 web/src/constants/activity-windows.ts 保持同步。
 const TIMED_ACTIVITY_AUTOMATION_GROUPS = [
     {
         startTime: 1788192000,
@@ -326,6 +350,11 @@ const TIMED_ACTIVITY_AUTOMATION_GROUPS = [
         startTime: 1787709600,
         endTime: 1788883199,
         keys: RAIN_POEM_AUTOMATION_KEYS
+    },
+    {
+        startTime: 1789005600,
+        endTime: 1791820799,
+        keys: PET_DIARY_AUTOMATION_KEYS
     }
 ];
 
@@ -348,6 +377,24 @@ function disableHiddenActivityAutomation(automation, nowSeconds = Math.floor(Dat
     if (!automation || typeof automation !== 'object') return automation;
     for (const key of getInactiveActivityAutomationKeys(nowSeconds)) automation[key] = false;
     return automation;
+}
+
+// 仅主运行时调用；worker 仍会在读取时应用失效活动的保护逻辑。
+let inactiveActivityConfigNeedsSave = false;
+function persistInactiveActivityAutomation(nowSeconds = Math.floor(Date.now() / 1000)) {
+    const inactive = [...getInactiveActivityAutomationKeys(nowSeconds)];
+    const changedAccounts = [];
+    for (const [id, cfg] of Object.entries(globalConfig.accountConfigs || {})) {
+        if (!inactive.some(key => cfg.automation?.[key] === true)) continue;
+        disableHiddenActivityAutomation(cfg.automation, nowSeconds);
+        changedAccounts.push(id);
+        inactiveActivityConfigNeedsSave = true;
+    }
+    if (inactiveActivityConfigNeedsSave) {
+        saveGlobalConfig({ throwOnError: true });
+        inactiveActivityConfigNeedsSave = false;
+    }
+    return changedAccounts;
 }
 
 /** 默认间隔配置（秒） */
@@ -939,6 +986,9 @@ function loadGlobalConfig() {
         for (const [key, val] of Object.entries(rawConfigs)) {
             const id = String(key || '').trim();
             if (!id) continue;
+            if ([...getInactiveActivityAutomationKeys()].some(key => val?.automation?.[key] === true)) {
+                inactiveActivityConfigNeedsSave = true;
+            }
             globalConfig.accountConfigs[id] = normalizeAccountConfig(val, DEFAULT_ACCOUNT_CONFIG);
         }
         for (const [key, val] of Object.entries(globalConfig.accountConfigs)) {
@@ -2113,7 +2163,8 @@ module.exports = {
     removeFriendFromCache,
     getAntiResaleConfig,
     setAntiResaleConfig,
-    DEFAULT_ANTI_RESALE_CONFIG
+    DEFAULT_ANTI_RESALE_CONFIG,
+    persistInactiveActivityAutomation
 };
 
 module.exports._test = {
