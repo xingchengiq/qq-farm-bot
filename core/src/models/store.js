@@ -208,9 +208,11 @@ function deleteAccountCaches(accountId) {
 
 const ALLOWED_PLANTING_STRATEGIES = [
     'level', 'max_exp', 'max_fert_exp',
-    'max_profit', 'max_fert_profit', 'bag_priority'
+    'max_profit', 'max_fert_profit', 'bag_priority', 'task_priority'
 ];
-const ALLOWED_BAG_SEED_FALLBACK_STRATEGIES = ALLOWED_PLANTING_STRATEGIES.filter(s => s !== 'bag_priority');
+const ALLOWED_BAG_SEED_FALLBACK_STRATEGIES = ALLOWED_PLANTING_STRATEGIES.filter(
+    s => s !== 'bag_priority' && s !== 'task_priority'
+);
 const PUSHOO_CHANNELS = new Set([
     'webhook', 'qmsg', 'serverchan', 'pushplus', 'pushplushxtrip',
     'dingtalk', 'wecom', 'bark', 'gocqhttp', 'onebot', 'atri',
@@ -389,6 +391,7 @@ const DEFAULT_ACCOUNT_CONFIG = {
     },
     plantingStrategy: 'max_exp',
     prioritize2x2Crops: false,
+    prioritizeGrowthTasks: false,
     friendBadRetryDate: '',
     intervals: DEFAULT_INTERVALS,
     friendQuietHours: DEFAULT_QUIET_HOURS,
@@ -456,7 +459,7 @@ function syncBagSeedPriority(accountId, bagSeeds, options = {}) {
     const currentIds = currentSeeds.map(seed => seed.seedId);
     const priority = normalizeBagSeedPriority(cfg.bagSeedPriority);
     const knownIds = normalizeBagSeedPriority(cfg.bagSeedKnownIds);
-    const nextPriority = [...currentIds];
+    const nextPriority = [...priority, ...currentIds.filter(id => !priority.includes(id))];
 
     const nextKnownIds = [...new Set([...knownIds, ...priority, ...currentIds])];
     const changed = JSON.stringify(nextPriority) !== JSON.stringify(priority)
@@ -633,6 +636,7 @@ function cloneAccountConfig(config = DEFAULT_ACCOUNT_CONFIG) {
         plantingStrategy: ALLOWED_PLANTING_STRATEGIES.includes(String(config.plantingStrategy || ''))
             ? String(config.plantingStrategy) : DEFAULT_ACCOUNT_CONFIG.plantingStrategy,
         prioritize2x2Crops: config.prioritize2x2Crops === true,
+        prioritizeGrowthTasks: config.prioritizeGrowthTasks === true,
         plantBlacklist: plantBlacklist.map(Number).filter(n => Number.isFinite(n) && n > 0),
         stealDelaySeconds: Math.max(0, Math.min(60, Number(config.stealDelaySeconds) || 1)),
         fertilizerBuyOrganicCount: Math.max(0, Math.min(999, Number(config.fertilizerBuyOrganicCount) || 1)),
@@ -750,6 +754,9 @@ function normalizeAccountConfig(raw, fallbackConfig = accountFallbackConfig) {
     if (input.prioritize2x2Crops !== undefined && input.prioritize2x2Crops !== null) {
         cfg.prioritize2x2Crops = input.prioritize2x2Crops === true;
     }
+    if (input.prioritizeGrowthTasks !== undefined && input.prioritizeGrowthTasks !== null) {
+        cfg.prioritizeGrowthTasks = input.prioritizeGrowthTasks === true;
+    }
     cfg.friendBadRetryDate = /^\d{4}-\d{2}-\d{2}$/.test(String(input.friendBadRetryDate || ''))
         ? String(input.friendBadRetryDate) : '';
 
@@ -846,6 +853,7 @@ function pickDefaultPlanConfig(raw) {
         autoCodeRefresh: { ...cfg.autoCodeRefresh },
         plantingStrategy: cfg.plantingStrategy,
         prioritize2x2Crops: cfg.prioritize2x2Crops === true,
+        prioritizeGrowthTasks: cfg.prioritizeGrowthTasks === true || cfg.plantingStrategy === 'task_priority',
         intervals: { ...cfg.intervals },
         friendQuietHours: { ...cfg.friendQuietHours },
         stealDelaySeconds: cfg.stealDelaySeconds,
@@ -1196,6 +1204,7 @@ function getConfigSnapshot(accountId) {
         autoCodeRefresh: { ...cfg.autoCodeRefresh },
         plantingStrategy: cfg.plantingStrategy,
         prioritize2x2Crops: cfg.prioritize2x2Crops === true,
+        prioritizeGrowthTasks: cfg.prioritizeGrowthTasks === true || cfg.plantingStrategy === 'task_priority',
         friendBadRetryDate: String(cfg.friendBadRetryDate || ''),
         intervals: { ...cfg.intervals },
         friendQuietHours: { ...cfg.friendQuietHours },
@@ -1253,6 +1262,9 @@ function applyConfigSnapshot(patch = {}, opts = {}) {
     }
     if (patch.prioritize2x2Crops !== undefined && patch.prioritize2x2Crops !== null) {
         cfg.prioritize2x2Crops = patch.prioritize2x2Crops === true;
+    }
+    if (patch.prioritizeGrowthTasks !== undefined && patch.prioritizeGrowthTasks !== null) {
+        cfg.prioritizeGrowthTasks = patch.prioritizeGrowthTasks === true;
     }
     if (patch.friendBadRetryDate !== undefined && patch.friendBadRetryDate !== null) {
         const retryDate = String(patch.friendBadRetryDate || '');
@@ -1376,6 +1388,11 @@ function isAutomationOn(key, accountId) {
 
 function getPlantingStrategy(accountId) {
     return getAccountConfigSnapshot(accountId).plantingStrategy;
+}
+
+function getPrioritizeGrowthTasks(accountId) {
+    const config = getAccountConfigSnapshot(accountId);
+    return config.prioritizeGrowthTasks === true || config.plantingStrategy === 'task_priority';
 }
 
 function getPrioritize2x2Crops(accountId) {
@@ -2022,6 +2039,7 @@ module.exports = {
     isAutomationOn,
     getPlantingStrategy,
     getPrioritize2x2Crops,
+    getPrioritizeGrowthTasks,
     getFriendBadRetryDate,
     getBagSeedPriority,
     syncBagSeedPriority,
